@@ -59,7 +59,7 @@ footer { margin-top: 64px; padding-top: 20px; border-top: 1px solid var(--line);
 <main>
 <p class="home"><a href="../../">← Giovanni Trabucco</a></p>
 <h1>Building LibTorch for 32-bit ARM, with QNNPACK quantization</h1>
-<p class="lead">PyTorch doesn't ship LibTorch for 32-bit ARM, so I built it myself, with QNNPACK turned on so it can run quantized (int8) models. These are the steps that worked for me. I went through all of them again from scratch in November 2026 to make sure.</p>
+<p class="lead">PyTorch doesn't ship LibTorch for 32-bit ARM, so I built it myself, with QNNPACK turned on so it can run quantized (int8) models. I did this in April 2025. These are the steps that worked for me, and I later went through all of them again from scratch to make sure.</p>
 <p class="versions">PyTorch 2.1.0 · ONNX Runtime 1.19.2 · Protobuf 21.12 and 3.13.0 · built on a Jetson Orin</p>
 
 <h2><span class="n">1</span>What we're building</h2>
@@ -115,7 +115,7 @@ cd pytorch
 git submodule update --init --recursive
 cd ..</code></pre></div>
 
-<div class="note"><p>When I redid this in November 2026, <code>github.com/microsoft/onnxruntime</code> answered "Repository not found". I used my old local copy, checked out at tag <code>v1.19.2</code> (commit <code>ffceed9</code>). If the clone fails for you too, you'll need a copy of that tag from somewhere else.</p></div>
+<div class="note"><p>When I went through the steps again later, <code>github.com/microsoft/onnxruntime</code> answered "Repository not found". I used my old local copy, checked out at tag <code>v1.19.2</code> (commit <code>ffceed9</code>). If the clone fails for you too, you'll need a copy of that tag from somewhere else.</p></div>
 
 <h2><span class="n">4</span>The toolchain files</h2>
 <p>A toolchain file tells CMake which compiler to use and that it's building for another machine. I have three.</p>
@@ -326,7 +326,7 @@ $T/libc/lib/ld-linux-armhf.so.3 \
   </tbody>
 </table></div>
 
-<footer>Tested in November 2026 on a Jetson Orin (Ubuntu 20.04): PyTorch v2.1.0, ONNX Runtime v1.19.2 (<code>ffceed9</code>), Protobuf v21.12 and v3.13.0.</footer>
+<footer>Built in April 2025 on a Jetson Orin (Ubuntu 20.04): PyTorch v2.1.0, ONNX Runtime v1.19.2 (<code>ffceed9</code>), Protobuf v21.12 and v3.13.0.</footer>
 </main>
 
 <script>
