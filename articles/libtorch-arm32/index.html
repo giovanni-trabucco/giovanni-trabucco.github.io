@@ -59,7 +59,7 @@ footer { margin-top: 64px; padding-top: 20px; border-top: 1px solid var(--line);
 <main>
 <p class="home"><a href="../../">← Giovanni Trabucco</a></p>
 <h1>Building LibTorch for 32-bit ARM, with QNNPACK quantization</h1>
-<p class="lead">PyTorch doesn't ship LibTorch for 32-bit ARM, so I built it myself, with QNNPACK turned on so it can run quantized (int8) models. I did this in April 2025. These are the steps that worked for me, and I later went through all of them again from scratch to make sure.</p>
+<p class="lead">PyTorch doesn't ship LibTorch for 32-bit ARM, so it is necessary to build it from scratch, with QNNPACK turned on so it can run quantized (int8) models. I did this in April 2025. These are the steps that worked for me, and I later went through all of them again from scratch to make sure.</p>
 <p class="versions">PyTorch 2.1.0 · ONNX Runtime 1.19.2 · Protobuf 21.12 and 3.13.0 · built on a Jetson Orin</p>
 
 <h2><span class="n">1</span>What we're building</h2>
