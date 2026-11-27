@@ -1,0 +1,342 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="How I cross-compiled LibTorch 2.1 and ONNX Runtime 1.19 for 32-bit ARM on a Jetson Orin.">
+<title>Building LibTorch for 32-bit ARM · Giovanni Trabucco</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one narrow reading column, numbered steps because the build really is a sequence */
+:root {
+  --bg: #f7f8f9; --fg: #1b2127; --muted: #5d6873; --line: #d9dee3;
+  --accent: #0b6e72; --soft: #e6f1f1; --code-bg: #1d2329; --code-fg: #e3e8ec; --code-dim: #8b97a3;
+  --sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #14181c; --fg: #e4e8eb; --muted: #9aa5af; --line: #2c343b;
+  --accent: #5cc4c6; --soft: #1b2a2d; --code-bg: #0e1215; --code-fg: #e3e8ec; --code-dim: #7d8894; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #14181c; --fg: #e4e8eb; --muted: #9aa5af; --line: #2c343b;
+  --accent: #5cc4c6; --soft: #1b2a2d; --code-bg: #0e1215; --code-fg: #e3e8ec; --code-dim: #7d8894; color-scheme: dark }
+
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--fg); font: 17.5px/1.7 var(--sans);
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+main { max-width: 700px; margin: 0 auto; padding-block: 56px 80px; }
+h1 { font-size: clamp(30px, 5.5vw, 40px); line-height: 1.15; margin: 0 0 16px; text-wrap: balance; }
+h2 { font-size: 24px; line-height: 1.3; margin: 56px 0 12px; text-wrap: balance; }
+h2 .n { color: var(--accent); margin-right: 8px; font-variant-numeric: tabular-nums; }
+p, ul, ol { margin: 0 0 16px; }
+li { margin-bottom: 6px; }
+a { color: var(--accent); }
+a:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.lead { font-size: 19px; color: var(--muted); }
+.versions { font-family: var(--mono); font-size: 13.5px; color: var(--muted); margin-top: 20px; }
+code { font-family: var(--mono); font-size: .86em; background: var(--soft); padding: 1px 5px; border-radius: 4px; overflow-wrap: anywhere; }
+.code { position: relative; background: var(--code-bg); border-radius: 8px; margin: 0 0 20px; }
+.code pre { margin: 0; padding: 16px; overflow-x: auto; color: var(--code-fg); font: 14px/1.6 var(--mono); }
+.code pre code { background: none; padding: 0; font-size: inherit; overflow-wrap: normal; }
+.code .c { color: var(--code-dim); }
+.code .label { display: block; padding: 10px 16px 0; font: 12px var(--mono); color: var(--code-dim); }
+.copy { position: absolute; top: 8px; right: 8px; font: 12px var(--sans); color: var(--code-dim);
+  background: transparent; border: 1px solid var(--code-dim); border-radius: 5px; padding: 2px 9px; cursor: pointer; }
+.copy:hover { color: var(--code-fg); }
+.note { border-left: 3px solid var(--accent); background: var(--soft); padding: 12px 16px; border-radius: 0 6px 6px 0; margin: 0 0 20px; }
+.note p:last-child { margin: 0; }
+.scroll { overflow-x: auto; margin: 0 0 20px; }
+table { border-collapse: collapse; width: 100%; font-size: 15px; }
+th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { color: var(--muted); font-weight: 600; }
+footer { margin-top: 64px; padding-top: 20px; border-top: 1px solid var(--line); color: var(--muted); font-size: 15px; }
+@media (max-width: 560px) { body { font-size: 16.5px; } .code pre { font-size: 13px; } }
+</style>
+<style>body{margin:0}.home{font-size:15px;margin:0 0 32px}.home a{text-decoration:none}</style>
+</head>
+<body>
+
+<main>
+<p class="home"><a href="../../">← Giovanni Trabucco</a></p>
+<h1>Building LibTorch for 32-bit ARM</h1>
+<p class="lead">PyTorch doesn't ship LibTorch for 32-bit ARM, so I built it myself. These are the steps that worked for me. I went through all of them again from scratch in November 2026 to make sure.</p>
+<p class="versions">PyTorch 2.1.0 · ONNX Runtime 1.19.2 · Protobuf 21.12 and 3.13.0 · built on a Jetson Orin</p>
+
+<h2><span class="n">1</span>What we're building</h2>
+<p>The goal is LibTorch, the C++ part of PyTorch, as shared libraries (<code>libtorch.so</code> and friends) for an armv7 board with hard-float (armhf). I also built ONNX Runtime because I needed it on the same board. You can skip that part if you only want LibTorch.</p>
+<p>I didn't build on the board. I built on a <strong>Jetson Orin</strong> (aarch64, Ubuntu 20.04) and cross-compiled for 32-bit ARM. The Jetson has one handy property: it can run 32-bit ARM programs. That matters because the build needs to run a tool called <code>protoc</code> that it compiles itself.</p>
+<p>The order is:</p>
+<ol>
+  <li>Protobuf 21.12, then ONNX Runtime on top of it.</li>
+  <li>Protobuf 3.13, the older version PyTorch wants.</li>
+  <li>A small patch to PyTorch, plus some helper tools.</li>
+  <li>LibTorch itself.</li>
+  <li>A tiny test program.</li>
+</ol>
+<p>Yes, two versions of Protobuf. ONNX Runtime needs 21.12 and PyTorch 2.1 needs 3.13. They can't share one.</p>
+
+<h2><span class="n">2</span>What you need</h2>
+<p><strong>Two cross compilers.</strong> This surprised me, but it's the setup that works:</p>
+<ul>
+  <li>The Arm GNU toolchain 11.2 (<code>arm-none-linux-gnueabihf</code>) for PyTorch.</li>
+  <li>Ubuntu's own <code>arm-linux-gnueabihf-gcc-9</code> for both Protobufs and ONNX Runtime.</li>
+</ul>
+<p>Why? The build runs the <code>protoc</code> we compile. If it's compiled with GCC 11.2, it needs a newer C library than Ubuntu 20.04 has, and it refuses to start (<code>GLIBC_2.34 not found</code>). Compiled with Ubuntu's GCC 9, it runs fine.</p>
+
+<div class="code"><span class="label">shell</span><pre><code><span class="c"># Arm toolchain 11.2, from developer.arm.com</span>
+sudo tar -xJf gcc-arm-11.2-2022.02-aarch64-arm-none-linux-gnueabihf.tar.xz -C /opt
+export PATH=/opt/gcc-arm-11.2-2022.02-aarch64-arm-none-linux-gnueabihf/bin:$PATH
+
+<span class="c"># Ubuntu's GCC 9 cross compiler</span>
+sudo apt install gcc-9-arm-linux-gnueabihf g++-9-arm-linux-gnueabihf
+
+<span class="c"># other tools</span>
+sudo apt install git build-essential python3 python3-pip
+pip3 install pyyaml typing_extensions</code></pre></div>
+
+<p><strong>A recent CMake.</strong> The one in Ubuntu 20.04 (3.16) is too old. I used 3.31, installed with <code>pip3 install --user cmake</code>.</p>
+<p><strong>Time and disk.</strong> The whole thing took about 5 hours on the Jetson, most of it LibTorch. Keep 15 GB or so free.</p>
+
+<h2><span class="n">3</span>Get the source code</h2>
+<p>Everything goes in one folder. I use <code>~/workspace/compilare</code>. The config files below use that path, so change them if you pick another one.</p>
+
+<div class="code"><span class="label">shell</span><pre><code>mkdir -p ~/workspace/compilare && cd ~/workspace/compilare
+
+git clone --branch v21.12  https://github.com/protocolbuffers/protobuf.git protobuf
+git clone --branch v3.13.0 https://github.com/protocolbuffers/protobuf.git protobuf_pytorch
+git clone --branch v1.19.2 https://github.com/microsoft/onnxruntime.git onnxruntime
+
+git clone --branch v2.1.0 https://github.com/pytorch/pytorch.git pytorch
+cd pytorch
+git submodule update --init --recursive
+cd ..</code></pre></div>
+
+<div class="note"><p>When I redid this in November 2026, <code>github.com/microsoft/onnxruntime</code> answered "Repository not found". I used my old local copy, checked out at tag <code>v1.19.2</code> (commit <code>ffceed9</code>). If the clone fails for you too, you'll need a copy of that tag from somewhere else.</p></div>
+
+<h2><span class="n">4</span>The toolchain files</h2>
+<p>A toolchain file tells CMake which compiler to use and that it's building for another machine. I have three.</p>
+
+<p><code>protobuf_tool.cmake</code>, for both Protobuf builds:</p>
+<div class="code"><span class="label">protobuf_tool.cmake</span><pre><code>set(CMAKE_SYSTEM_NAME Linux)
+set(CMAKE_SYSTEM_PROCESSOR arm)
+
+set(CMAKE_C_COMPILER   arm-linux-gnueabihf-gcc-9)
+set(CMAKE_CXX_COMPILER arm-linux-gnueabihf-g++-9)
+
+set(CMAKE_CXX_FLAGS "-Wno-error")</code></pre></div>
+
+<p><code>onnx_tool.cmake</code>, for ONNX Runtime. It points at the Protobuf 21.12 we'll build in step 5:</p>
+<div class="code"><span class="label">onnx_tool.cmake</span><pre><code>SET(CMAKE_SYSTEM_NAME Linux)
+SET(CMAKE_SYSTEM_VERSION 1)
+SET(CMAKE_C_COMPILER   arm-linux-gnueabihf-gcc-9)
+SET(CMAKE_CXX_COMPILER arm-linux-gnueabihf-g++-9)
+
+SET(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
+SET(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)
+SET(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
+SET(CMAKE_FIND_ROOT_PATH_MODE_PACKAGE ONLY)
+
+SET(ONNX_CUSTOM_PROTOC_EXECUTABLE $ENV{HOME}/workspace/compilare/protobuf/install/bin/protoc)
+SET(PROTOBUF_INCLUDE_DIRS         $ENV{HOME}/workspace/compilare/protobuf/install/include)
+SET(PROTOBUF_LIBRARIES            $ENV{HOME}/workspace/compilare/protobuf/install/lib)</code></pre></div>
+
+<p><code>pytorch_tool.cmake</code>, for LibTorch. It uses the GCC 11.2 toolchain and turns off what I didn't need (CUDA, Python, distributed training):</p>
+<div class="code"><span class="label">pytorch_tool.cmake</span><pre><code>set(CMAKE_SYSTEM_NAME Linux)
+set(CMAKE_SYSTEM_PROCESSOR armv7l)
+
+SET(CMAKE_BUILD_TYPE Release)
+SET(CMAKE_POSITION_INDEPENDENT_CODE ON)
+SET(CMAKE_LIBRARY_PATH /opt/gcc-arm-11.2-2022.02-aarch64-arm-none-linux-gnueabihf/arm-none-linux-gnueabihf/libc/usr/lib)
+
+SET(PYTORCH_QNNPACK_LIBRARY_TYPE static)
+SET(PYTORCH_QNNPACK_BUILD_BENCHMARKS OFF)
+SET(PYTORCH_QNNPACK_BUILD_TESTS OFF)
+
+SET(CMAKE_C_COMPILER   arm-none-linux-gnueabihf-gcc)
+SET(CMAKE_CXX_COMPILER arm-none-linux-gnueabihf-g++)
+
+SET(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
+SET(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)
+SET(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
+SET(CMAKE_FIND_ROOT_PATH_MODE_PACKAGE ONLY)
+
+SET(USE_CUDA OFF)
+SET(USE_QNNPACK ON)
+SET(USE_PYTORCH_QNNPACK ON)
+SET(USE_OPENMP OFF)
+SET(USE_MPI OFF)
+SET(USE_KINETO OFF)
+SET(BUILD_PYTHON OFF)
+
+SET(BUILD_CUSTOM_PROTOBUF OFF)
+SET(BUILD_PROTOBUF OFF)
+SET(PROTOBUF_UPDATE_FILES ON)
+SET(USE_DISTRIBUTED OFF)
+SET(USE_TENSORPIPE OFF)
+
+<span class="c"># Protobuf 21.12 (see the note below)</span>
+SET(PROTOBUF_PROTOC_EXECUTABLE $ENV{HOME}/workspace/compilare/protobuf/install/bin/protoc)
+SET(PROTOBUF_INCLUDE_DIRS      $ENV{HOME}/workspace/compilare/protobuf/install/include)
+SET(PROTOBUF_LIBRARIES         $ENV{HOME}/workspace/compilare/protobuf/install/lib)
+SET(ONNX_PROTOC_EXECUTABLE     $ENV{HOME}/workspace/compilare/protobuf/install/bin/protoc)
+
+<span class="c"># Protobuf 3.13, the one PyTorch actually uses</span>
+SET(CAFFE2_CUSTOM_PROTOC_EXECUTABLE $ENV{HOME}/workspace/compilare/protobuf_pytorch/install/bin/protoc)
+SET(CAFFE2_PROTOBUF_INCLUDE_DIRS    $ENV{HOME}/workspace/compilare/protobuf_pytorch/install/include)
+SET(CAFFE2_PROTOBUF_LIBRARIES       $ENV{HOME}/workspace/compilare/protobuf_pytorch/install/lib)
+
+<span class="c"># helper tools for SLEEF (step 8)</span>
+SET(NATIVE_BUILD_DIR $ENV{HOME}/workspace/compilare/pytorch/third_party/sleef/sleef_build_host)</code></pre></div>
+
+<div class="note"><p>I originally thought the 21.12 lines were used for the ONNX code inside PyTorch. They aren't. When I checked the build, PyTorch only ever called the 3.13 <code>protoc</code>. The lines do no harm, and this is the exact file I tested, so I left them in.</p></div>
+
+<h2><span class="n">5</span>Protobuf 21.12 and ONNX Runtime</h2>
+<div class="code"><span class="label">shell</span><pre><code>cd ~/workspace/compilare/protobuf
+cp ../protobuf_tool.cmake tool.cmake
+mkdir -p build && cd build
+cmake .. \
+  -DCMAKE_TOOLCHAIN_FILE=../tool.cmake \
+  -DCMAKE_INSTALL_PREFIX=$HOME/workspace/compilare/protobuf/install \
+  -DCMAKE_BUILD_TYPE=Release \
+  -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
+  -Dprotobuf_BUILD_SHARED_LIBS=OFF \
+  -Dprotobuf_BUILD_TESTS=OFF
+make -j$(nproc)
+make install
+
+../install/bin/protoc --version   <span class="c"># should print: libprotoc 3.21.12</span></code></pre></div>
+<p>If that last command prints a <code>GLIBC</code> error, Protobuf was built with the wrong compiler. Check the toolchain file.</p>
+
+<p>Now ONNX Runtime. One thing needs fixing first. During the build it downloads Eigen from GitLab, and GitLab has re-packed that zip since this version came out. The files inside are the same, but the checksum changed and the download gets rejected. So update the checksum:</p>
+<div class="code"><span class="label">shell</span><pre><code>cd ~/workspace/compilare/onnxruntime
+sed -i 's/be8be39fdbc6e60e94fa7870b280707069b5b81a/32b145f525a8308d7ab1c09388b2e288312d8eba/' cmake/deps.txt
+
+cp ../onnx_tool.cmake tool.cmake
+mkdir -p build && cd build
+cmake ../cmake \
+  -DCMAKE_TOOLCHAIN_FILE=../tool.cmake \
+  -DCMAKE_BUILD_TYPE=Release \
+  -Donnxruntime_BUILD_SHARED_LIB=ON \
+  -Donnxruntime_ENABLE_CPUINFO=OFF \
+  -Donnxruntime_GCC_STATIC_CPP_RUNTIME=ON \
+  -Donnxruntime_RUN_ONNX_TESTS=OFF \
+  -Dprotobuf_WITH_ZLIB=OFF
+make -j6</code></pre></div>
+<p>This took about half an hour. The result is <code>build/libonnxruntime.so</code>.</p>
+
+<h2><span class="n">6</span>Protobuf 3.13</h2>
+<p>Same as before. The only difference is that in this older version the CMake files are in the <code>cmake</code> folder.</p>
+<div class="code"><span class="label">shell</span><pre><code>cd ~/workspace/compilare/protobuf_pytorch
+cp ../protobuf_tool.cmake tool.cmake
+mkdir -p build && cd build
+cmake ../cmake \
+  -DCMAKE_TOOLCHAIN_FILE=../tool.cmake \
+  -DCMAKE_INSTALL_PREFIX=$HOME/workspace/compilare/protobuf_pytorch/install \
+  -DCMAKE_BUILD_TYPE=Release \
+  -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
+  -Dprotobuf_BUILD_SHARED_LIBS=OFF \
+  -Dprotobuf_BUILD_TESTS=OFF
+make -j$(nproc)
+make install
+
+../install/bin/protoc --version   <span class="c"># should print: libprotoc 3.13.0</span></code></pre></div>
+
+<h2><span class="n">7</span>Patch two assembly files in PyTorch</h2>
+<p>Without this, the LibTorch build stops with:</p>
+<div class="code"><pre><code>Error: unknown architecture `armv7-a;'</code></pre></div>
+<p>Two assembly files put <code>.arch armv7-a; .fpu neon</code> on a single line, and the GNU assembler doesn't accept that. Those lines aren't needed anyway, because the compiler already targets armv7-a with NEON. So I just delete them:</p>
+<div class="code"><span class="label">shell</span><pre><code>cd ~/workspace/compilare/pytorch
+D=aten/src/ATen/native/quantized/cpu/qnnpack/src/q8gemm_sparse
+sed -i '/NDEF_APPLE_SYMBOLS/d' \
+  $D/4x8c1x4-dq-packedA-aarch32-neon.S \
+  $D/4x8c8x1-dq-packedA-aarch32-neon.S</code></pre></div>
+
+<h2><span class="n">8</span>SLEEF helper tools</h2>
+<p>SLEEF is a math library inside PyTorch. It needs a few small programs that run on the build machine, not on the board. Build them with the normal system compiler, without any toolchain file:</p>
+<div class="code"><span class="label">shell</span><pre><code>cd ~/workspace/compilare/pytorch/third_party/sleef
+cmake -S . -B sleef_build_host \
+  -DCMAKE_BUILD_TYPE=Release \
+  -DBUILD_TESTS=OFF -DBUILD_DFT=OFF -DBUILD_QUAD=OFF -DBUILD_GNUABI_LIBS=OFF
+cmake --build sleef_build_host -j$(nproc)</code></pre></div>
+<p>The <code>NATIVE_BUILD_DIR</code> line in <code>pytorch_tool.cmake</code> points to this folder.</p>
+
+<h2><span class="n">9</span>Build LibTorch</h2>
+<div class="code"><span class="label">shell</span><pre><code>cd ~/workspace/compilare/pytorch
+cp ../pytorch_tool.cmake tool.cmake
+mkdir -p build && cd build
+cmake .. \
+  -DCMAKE_TOOLCHAIN_FILE=../tool.cmake \
+  -DCMAKE_INSTALL_PREFIX=$HOME/workspace/compilare/pytorch/install \
+  -DBUILD_SHARED_LIBS=ON \
+  -DPYTHON_EXECUTABLE=$(which python3)
+make -j1
+make install</code></pre></div>
+<p>Note the <code>-j1</code>, a single job. When I ran it in parallel on the Jetson the build crashed, so I build one file at a time. It's slow (about 4 hours), but it finishes.</p>
+<p>At the end, <code>pytorch/install/lib</code> contains <code>libtorch.so</code>, <code>libtorch_cpu.so</code>, <code>libc10.so</code> and <code>libprotobuf.so.3.13.0.0</code>. All of them are 32-bit ARM. You can check with <code>file libtorch_cpu.so</code>.</p>
+
+<h2><span class="n">10</span>Test it</h2>
+<p>A tiny program that creates a random tensor and prints it:</p>
+<div class="code"><span class="label">main.cpp</span><pre><code>#include &lt;torch/torch.h&gt;
+#include &lt;iostream&gt;
+
+int main() {
+  torch::Tensor t = torch::rand({2, 3});
+  std::cout &lt;&lt; t &lt;&lt; std::endl;
+}</code></pre></div>
+<div class="code"><span class="label">CMakeLists.txt</span><pre><code>cmake_minimum_required(VERSION 3.18)
+project(hello_torch CXX)
+set(CMAKE_CXX_STANDARD 17)
+
+find_package(Torch REQUIRED)
+add_executable(hello_torch main.cpp)
+target_link_libraries(hello_torch "${TORCH_LIBRARIES}")</code></pre></div>
+<p>When you configure it, you have to tell CMake where LibTorch's Protobuf is (<code>Protobuf_DIR</code>). Without that, it stops with "Your installed Caffe2 version uses protobuf but the protobuf library cannot be found".</p>
+<div class="code"><span class="label">shell</span><pre><code>L=$HOME/workspace/compilare/pytorch
+cmake -S . -B build \
+  -DCMAKE_TOOLCHAIN_FILE=$L/tool.cmake \
+  -DTorch_DIR=$L/install/share/cmake/Torch \
+  -DProtobuf_DIR=$L/install/lib/cmake/protobuf
+cmake --build build -j</code></pre></div>
+<p>On the board, copy over <code>hello_torch</code> and the <code>.so</code> files from <code>pytorch/install/lib</code>, and run it.</p>
+<p>You can also try it right on the Jetson. Its own 32-bit C library is too old for programs built with GCC 11.2, so you start the program with the toolchain's loader instead:</p>
+<div class="code"><span class="label">shell</span><pre><code>T=/opt/gcc-arm-11.2-2022.02-aarch64-arm-none-linux-gnueabihf/arm-none-linux-gnueabihf
+$T/libc/lib/ld-linux-armhf.so.3 \
+  --library-path $T/libc/lib:$T/lib:$L/install/lib \
+  ./build/hello_torch</code></pre></div>
+<p>This is what I got:</p>
+<div class="code"><pre><code> 0.4166  0.2232  0.2923
+ 0.8177  0.7349  0.4586
+[ CPUFloatType{2,3} ]</code></pre></div>
+<p>Your numbers will be different, since they're random. If you see a 2×3 tensor, it works.</p>
+
+<h2><span class="n">11</span>Errors I ran into</h2>
+<div class="scroll"><table>
+  <thead><tr><th>Error</th><th>What to do</th></tr></thead>
+  <tbody>
+    <tr><td><code>GLIBC_2.34 not found</code> when running <code>protoc</code></td><td>Build Protobuf with <code>arm-linux-gnueabihf-gcc-9</code>, not GCC 11.2 (step 2).</td></tr>
+    <tr><td>Eigen download: hash mismatch</td><td>Update the checksum in <code>cmake/deps.txt</code> (step 5).</td></tr>
+    <tr><td><code>unknown architecture `armv7-a;'</code></td><td>Apply the patch from step 7.</td></tr>
+    <tr><td>LibTorch build crashes halfway</td><td>Use <code>make -j1</code>. It resumes where it stopped.</td></tr>
+    <tr><td>"the protobuf library cannot be found" in your own project</td><td>Add <code>-DProtobuf_DIR=…/install/lib/cmake/protobuf</code> (step 10).</td></tr>
+    <tr><td>CMake says your version is too old</td><td>Install a newer CMake. Ubuntu 20.04's 3.16 is not enough.</td></tr>
+  </tbody>
+</table></div>
+
+<footer>Tested in November 2026 on a Jetson Orin (Ubuntu 20.04): PyTorch v2.1.0, ONNX Runtime v1.19.2 (<code>ffceed9</code>), Protobuf v21.12 and v3.13.0.</footer>
+</main>
+
+<script>
+document.querySelectorAll('.code').forEach(function (block) {
+  var btn = document.createElement('button');
+  btn.className = 'copy'; btn.type = 'button'; btn.textContent = 'Copy';
+  btn.addEventListener('click', function () {
+    var pre = block.querySelector('pre');
+    var ok = function () { btn.textContent = 'Copied'; setTimeout(function () { btn.textContent = 'Copy'; }, 1400); };
+    var fallback = function () { var r = document.createRange(); r.selectNodeContents(pre); var s = getSelection(); s.removeAllRanges(); s.addRange(r); };
+    try { navigator.clipboard.writeText(pre.innerText).then(ok, fallback); } catch (e) { fallback(); }
+  });
+  block.appendChild(btn);
+});
+</script>
+</body>
+</html>

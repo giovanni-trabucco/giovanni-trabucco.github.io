@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Giovanni Trabucco</title>
+<meta name="description" content="Giovanni Trabucco's personal site and articles.">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;600;700&family=IBM+Plex+Mono:wght@400&display=swap">
+<style>
+:root { --bg:#f7f8f9; --fg:#1b2127; --muted:#5d6873; --line:#d9dee3; --accent:#0b6e72;
+  --sans:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif; --mono:"IBM Plex Mono",ui-monospace,Menlo,monospace; }
+@media (prefers-color-scheme: dark) { :root { --bg:#14181c; --fg:#e4e8eb; --muted:#9aa5af; --line:#2c343b; --accent:#5cc4c6; color-scheme:dark } }
+* { box-sizing:border-box }
+body { margin:0; background:var(--bg); color:var(--fg); font:17.5px/1.7 var(--sans); padding:0 16px }
+main { max-width:700px; margin:0 auto; padding:72px 0 80px }
+h1 { font-size:36px; line-height:1.15; margin:0 0 8px }
+.intro { color:var(--muted); margin:0 0 56px }
+h2 { font-size:13px; font-weight:600; letter-spacing:.08em; text-transform:uppercase; color:var(--muted); margin:0 0 8px }
+ul { list-style:none; margin:0; padding:0 }
+li { padding:16px 0; border-top:1px solid var(--line) }
+li a { color:var(--fg); font-weight:600; font-size:19px; text-decoration:none }
+li a:hover, li a:focus-visible { color:var(--accent) }
+.meta { font:13px var(--mono); color:var(--muted) }
+li p { margin:4px 0 0 }
+footer { margin-top:64px; font-size:15px; color:var(--muted) }
+footer a { color:var(--accent) }
+</style>
+</head>
+<body>
+<main>
+<h1>Giovanni Trabucco</h1>
+<p class="intro">Notes on things I've built.</p>
+
+<h2>Articles</h2>
+<ul>
+  <li>
+    <span class="meta">November 2026</span><br>
+    <a href="articles/libtorch-arm32/">Building LibTorch for 32-bit ARM</a>
+    <p>How I cross-compiled LibTorch 2.1 and ONNX Runtime 1.19 for an armv7 board, on a Jetson Orin.</p>
+  </li>
+</ul>
+
+<footer><a href="https://github.com/giovanni-trabucco">GitHub</a></footer>
+</main>
+</body>
+</html>
