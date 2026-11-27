@@ -102,9 +102,9 @@ pip3 install pyyaml typing_extensions</code></pre></div>
 <p><strong>Time and disk.</strong> The whole thing took about 5 hours on the Jetson, most of it LibTorch. Keep 15 GB or so free.</p>
 
 <h2><span class="n">3</span>Get the source code</h2>
-<p>Everything goes in one folder. I use <code>~/workspace/compilare</code>. The config files below use that path, so change them if you pick another one.</p>
+<p>Everything goes in one folder. I use <code>~/workspace</code>. The config files below use that path, so change them if you pick another one.</p>
 
-<div class="code"><span class="label">shell</span><pre><code>mkdir -p ~/workspace/compilare && cd ~/workspace/compilare
+<div class="code"><span class="label">shell</span><pre><code>mkdir -p ~/workspace && cd ~/workspace
 
 git clone --branch v21.12  https://github.com/protocolbuffers/protobuf.git protobuf
 git clone --branch v3.13.0 https://github.com/protocolbuffers/protobuf.git protobuf_pytorch
@@ -140,9 +140,9 @@ SET(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)
 SET(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
 SET(CMAKE_FIND_ROOT_PATH_MODE_PACKAGE ONLY)
 
-SET(ONNX_CUSTOM_PROTOC_EXECUTABLE $ENV{HOME}/workspace/compilare/protobuf/install/bin/protoc)
-SET(PROTOBUF_INCLUDE_DIRS         $ENV{HOME}/workspace/compilare/protobuf/install/include)
-SET(PROTOBUF_LIBRARIES            $ENV{HOME}/workspace/compilare/protobuf/install/lib)</code></pre></div>
+SET(ONNX_CUSTOM_PROTOC_EXECUTABLE $ENV{HOME}/workspace/protobuf/install/bin/protoc)
+SET(PROTOBUF_INCLUDE_DIRS         $ENV{HOME}/workspace/protobuf/install/include)
+SET(PROTOBUF_LIBRARIES            $ENV{HOME}/workspace/protobuf/install/lib)</code></pre></div>
 
 <p><code>pytorch_tool.cmake</code>, for LibTorch. It uses the GCC 11.2 toolchain and turns off what I didn't need (CUDA, Python, distributed training):</p>
 <div class="code"><span class="label">pytorch_tool.cmake</span><pre><code>set(CMAKE_SYSTEM_NAME Linux)
@@ -179,28 +179,28 @@ SET(USE_DISTRIBUTED OFF)
 SET(USE_TENSORPIPE OFF)
 
 <span class="c"># Protobuf 21.12 (see the note below)</span>
-SET(PROTOBUF_PROTOC_EXECUTABLE $ENV{HOME}/workspace/compilare/protobuf/install/bin/protoc)
-SET(PROTOBUF_INCLUDE_DIRS      $ENV{HOME}/workspace/compilare/protobuf/install/include)
-SET(PROTOBUF_LIBRARIES         $ENV{HOME}/workspace/compilare/protobuf/install/lib)
-SET(ONNX_PROTOC_EXECUTABLE     $ENV{HOME}/workspace/compilare/protobuf/install/bin/protoc)
+SET(PROTOBUF_PROTOC_EXECUTABLE $ENV{HOME}/workspace/protobuf/install/bin/protoc)
+SET(PROTOBUF_INCLUDE_DIRS      $ENV{HOME}/workspace/protobuf/install/include)
+SET(PROTOBUF_LIBRARIES         $ENV{HOME}/workspace/protobuf/install/lib)
+SET(ONNX_PROTOC_EXECUTABLE     $ENV{HOME}/workspace/protobuf/install/bin/protoc)
 
 <span class="c"># Protobuf 3.13, the one PyTorch actually uses</span>
-SET(CAFFE2_CUSTOM_PROTOC_EXECUTABLE $ENV{HOME}/workspace/compilare/protobuf_pytorch/install/bin/protoc)
-SET(CAFFE2_PROTOBUF_INCLUDE_DIRS    $ENV{HOME}/workspace/compilare/protobuf_pytorch/install/include)
-SET(CAFFE2_PROTOBUF_LIBRARIES       $ENV{HOME}/workspace/compilare/protobuf_pytorch/install/lib)
+SET(CAFFE2_CUSTOM_PROTOC_EXECUTABLE $ENV{HOME}/workspace/protobuf_pytorch/install/bin/protoc)
+SET(CAFFE2_PROTOBUF_INCLUDE_DIRS    $ENV{HOME}/workspace/protobuf_pytorch/install/include)
+SET(CAFFE2_PROTOBUF_LIBRARIES       $ENV{HOME}/workspace/protobuf_pytorch/install/lib)
 
 <span class="c"># helper tools for SLEEF (step 8)</span>
-SET(NATIVE_BUILD_DIR $ENV{HOME}/workspace/compilare/pytorch/third_party/sleef/sleef_build_host)</code></pre></div>
+SET(NATIVE_BUILD_DIR $ENV{HOME}/workspace/pytorch/third_party/sleef/sleef_build_host)</code></pre></div>
 
 <div class="note"><p>I originally thought the 21.12 lines were used for the ONNX code inside PyTorch. They aren't. When I checked the build, PyTorch only ever called the 3.13 <code>protoc</code>. The lines do no harm, and this is the exact file I tested, so I left them in.</p></div>
 
 <h2><span class="n">5</span>Protobuf 21.12 and ONNX Runtime</h2>
-<div class="code"><span class="label">shell</span><pre><code>cd ~/workspace/compilare/protobuf
+<div class="code"><span class="label">shell</span><pre><code>cd ~/workspace/protobuf
 cp ../protobuf_tool.cmake tool.cmake
 mkdir -p build && cd build
 cmake .. \
   -DCMAKE_TOOLCHAIN_FILE=../tool.cmake \
-  -DCMAKE_INSTALL_PREFIX=$HOME/workspace/compilare/protobuf/install \
+  -DCMAKE_INSTALL_PREFIX=$HOME/workspace/protobuf/install \
   -DCMAKE_BUILD_TYPE=Release \
   -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
   -Dprotobuf_BUILD_SHARED_LIBS=OFF \
@@ -212,7 +212,7 @@ make install
 <p>If that last command prints a <code>GLIBC</code> error, Protobuf was built with the wrong compiler. Check the toolchain file.</p>
 
 <p>Now ONNX Runtime. One thing needs fixing first. During the build it downloads Eigen from GitLab, and GitLab has re-packed that zip since this version came out. The files inside are the same, but the checksum changed and the download gets rejected. So update the checksum:</p>
-<div class="code"><span class="label">shell</span><pre><code>cd ~/workspace/compilare/onnxruntime
+<div class="code"><span class="label">shell</span><pre><code>cd ~/workspace/onnxruntime
 sed -i 's/be8be39fdbc6e60e94fa7870b280707069b5b81a/32b145f525a8308d7ab1c09388b2e288312d8eba/' cmake/deps.txt
 
 cp ../onnx_tool.cmake tool.cmake
@@ -230,12 +230,12 @@ make -j6</code></pre></div>
 
 <h2><span class="n">6</span>Protobuf 3.13</h2>
 <p>Same as before. The only difference is that in this older version the CMake files are in the <code>cmake</code> folder.</p>
-<div class="code"><span class="label">shell</span><pre><code>cd ~/workspace/compilare/protobuf_pytorch
+<div class="code"><span class="label">shell</span><pre><code>cd ~/workspace/protobuf_pytorch
 cp ../protobuf_tool.cmake tool.cmake
 mkdir -p build && cd build
 cmake ../cmake \
   -DCMAKE_TOOLCHAIN_FILE=../tool.cmake \
-  -DCMAKE_INSTALL_PREFIX=$HOME/workspace/compilare/protobuf_pytorch/install \
+  -DCMAKE_INSTALL_PREFIX=$HOME/workspace/protobuf_pytorch/install \
   -DCMAKE_BUILD_TYPE=Release \
   -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
   -Dprotobuf_BUILD_SHARED_LIBS=OFF \
@@ -248,16 +248,19 @@ make install
 <h2><span class="n">7</span>Patch two assembly files in PyTorch</h2>
 <p>Without this, the LibTorch build stops with:</p>
 <div class="code"><pre><code>Error: unknown architecture `armv7-a;'</code></pre></div>
-<p>Two assembly files put <code>.arch armv7-a; .fpu neon</code> on a single line, and the GNU assembler doesn't accept that. Those lines aren't needed anyway, because the compiler already targets armv7-a with NEON. So I just delete them:</p>
-<div class="code"><span class="label">shell</span><pre><code>cd ~/workspace/compilare/pytorch
-D=aten/src/ATen/native/quantized/cpu/qnnpack/src/q8gemm_sparse
-sed -i '/NDEF_APPLE_SYMBOLS/d' \
-  $D/4x8c1x4-dq-packedA-aarch32-neon.S \
-  $D/4x8c8x1-dq-packedA-aarch32-neon.S</code></pre></div>
+<p>Two assembly files put <code>.arch armv7-a; .fpu neon</code> on a single line, and the GNU assembler doesn't accept that. Those lines aren't needed anyway, because the compiler already targets armv7-a with NEON. So I just delete the line that uses them.</p>
+<p>The two files are in <code>pytorch/aten/src/ATen/native/quantized/cpu/qnnpack/src/q8gemm_sparse/</code>:</p>
+<ul>
+  <li><code>4x8c1x4-dq-packedA-aarch32-neon.S</code></li>
+  <li><code>4x8c8x1-dq-packedA-aarch32-neon.S</code></li>
+</ul>
+<p>Open each one in a text editor. Near the top, a few lines define something called <code>NDEF_APPLE_SYMBOLS</code>. Leave those alone. A bit further down (around line 84) there's a line with only this on it:</p>
+<div class="code"><pre><code>        NDEF_APPLE_SYMBOLS                                                    ;\</code></pre></div>
+<p>Delete that whole line, and do the same in the other file. That's one line per file, two lines in total. Delete the full line and don't change the lines around it. They all end in <code>\</code>, which joins them into one long definition.</p>
 
 <h2><span class="n">8</span>SLEEF helper tools</h2>
 <p>SLEEF is a math library inside PyTorch. It needs a few small programs that run on the build machine, not on the board. Build them with the normal system compiler, without any toolchain file:</p>
-<div class="code"><span class="label">shell</span><pre><code>cd ~/workspace/compilare/pytorch/third_party/sleef
+<div class="code"><span class="label">shell</span><pre><code>cd ~/workspace/pytorch/third_party/sleef
 cmake -S . -B sleef_build_host \
   -DCMAKE_BUILD_TYPE=Release \
   -DBUILD_TESTS=OFF -DBUILD_DFT=OFF -DBUILD_QUAD=OFF -DBUILD_GNUABI_LIBS=OFF
@@ -265,12 +268,12 @@ cmake --build sleef_build_host -j$(nproc)</code></pre></div>
 <p>The <code>NATIVE_BUILD_DIR</code> line in <code>pytorch_tool.cmake</code> points to this folder.</p>
 
 <h2><span class="n">9</span>Build LibTorch</h2>
-<div class="code"><span class="label">shell</span><pre><code>cd ~/workspace/compilare/pytorch
+<div class="code"><span class="label">shell</span><pre><code>cd ~/workspace/pytorch
 cp ../pytorch_tool.cmake tool.cmake
 mkdir -p build && cd build
 cmake .. \
   -DCMAKE_TOOLCHAIN_FILE=../tool.cmake \
-  -DCMAKE_INSTALL_PREFIX=$HOME/workspace/compilare/pytorch/install \
+  -DCMAKE_INSTALL_PREFIX=$HOME/workspace/pytorch/install \
   -DBUILD_SHARED_LIBS=ON \
   -DPYTHON_EXECUTABLE=$(which python3)
 make -j1
@@ -295,7 +298,7 @@ find_package(Torch REQUIRED)
 add_executable(hello_torch main.cpp)
 target_link_libraries(hello_torch "${TORCH_LIBRARIES}")</code></pre></div>
 <p>When you configure it, you have to tell CMake where LibTorch's Protobuf is (<code>Protobuf_DIR</code>). Without that, it stops with "Your installed Caffe2 version uses protobuf but the protobuf library cannot be found".</p>
-<div class="code"><span class="label">shell</span><pre><code>L=$HOME/workspace/compilare/pytorch
+<div class="code"><span class="label">shell</span><pre><code>L=$HOME/workspace/pytorch
 cmake -S . -B build \
   -DCMAKE_TOOLCHAIN_FILE=$L/tool.cmake \
   -DTorch_DIR=$L/install/share/cmake/Torch \
