@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="description" content="How I cross-compiled LibTorch 2.1 and ONNX Runtime 1.19 for 32-bit ARM on a Jetson Orin.">
-<title>Building LibTorch for 32-bit ARM · Giovanni Trabucco</title>
+<meta name="description" content="How I cross-compiled LibTorch 2.1 with QNNPACK quantization, and ONNX Runtime 1.19, for 32-bit ARM on a Jetson Orin.">
+<title>Building LibTorch for 32-bit ARM, with QNNPACK quantization · Giovanni Trabucco</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
 <style>
 /* Layout: one narrow reading column, numbered steps because the build really is a sequence */
@@ -58,8 +58,8 @@ footer { margin-top: 64px; padding-top: 20px; border-top: 1px solid var(--line);
 
 <main>
 <p class="home"><a href="../../">← Giovanni Trabucco</a></p>
-<h1>Building LibTorch for 32-bit ARM</h1>
-<p class="lead">PyTorch doesn't ship LibTorch for 32-bit ARM, so I built it myself. These are the steps that worked for me. I went through all of them again from scratch in November 2026 to make sure.</p>
+<h1>Building LibTorch for 32-bit ARM, with QNNPACK quantization</h1>
+<p class="lead">PyTorch doesn't ship LibTorch for 32-bit ARM, so I built it myself, with QNNPACK turned on so it can run quantized (int8) models. These are the steps that worked for me. I went through all of them again from scratch in November 2026 to make sure.</p>
 <p class="versions">PyTorch 2.1.0 · ONNX Runtime 1.19.2 · Protobuf 21.12 and 3.13.0 · built on a Jetson Orin</p>
 
 <h2><span class="n">1</span>What we're building</h2>
@@ -74,6 +74,10 @@ footer { margin-top: 64px; padding-top: 20px; border-top: 1px solid var(--line);
   <li>A tiny test program.</li>
 </ol>
 <p>Yes, two versions of Protobuf. ONNX Runtime needs 21.12 and PyTorch 2.1 needs 3.13. They can't share one.</p>
+
+<h3>Why these versions</h3>
+<p>The model I run on the board is quantized to int8. I trained it with quantization-aware training (FX graph mode, using the <code>qnnpack</code> settings), then exported it to TorchScript. On the board, the quantized layers run on QNNPACK, PyTorch's backend for quantized ops on ARM. That's why the build turns it on with <code>USE_PYTORCH_QNNPACK</code>.</p>
+<p>I trained the model with PyTorch 2.0 on a Jetson, using NVIDIA's build. LibTorch should be at least as new as the PyTorch you export with, so I picked 2.1.0, the nearest stable release after it.</p>
 
 <h2><span class="n">2</span>What you need</h2>
 <p><strong>Two cross compilers.</strong> This surprised me, but it's the setup that works:</p>
